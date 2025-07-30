@@ -1,0 +1,180 @@
+# WebSocket Avatar Server
+
+A Node.js WebSocket server that handles avatar streaming with audio and video responses, designed to work with the Python client provided.
+
+## Features
+
+- **WebSocket Communication**: Real-time bidirectional communication
+- **Text Input Processing**: Handles text messages and generates responses
+- **Audio Input Processing**: Accepts base64 encoded audio data
+- **Video Frame Streaming**: Sends sequential video frames to clients
+- **Audio Response**: Includes audio chunks with video frames
+- **Session Management**: Tracks client sessions with unique IDs
+- **Health Monitoring**: Automatically cleans up inactive connections
+
+## Protocol Overview
+
+The server implements the following message types:
+
+### Incoming Messages (from client):
+- `text_input`: Text message to process
+- `audio_input`: Base64 encoded audio data
+
+### Outgoing Messages (to client):
+- `connection_established`: Sent when client connects
+- `stream_start`: Indicates beginning of response stream
+- `frame`: Individual video frame with optional audio
+- `stream_end`: Indicates end of response stream
+- `error`: Error messages
+
+## Installation
+
+1. Install Node.js (version 14 or higher)
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+## Usage
+
+### Start the server:
+```bash
+npm start
+```
+
+### For development with auto-restart:
+```bash
+npm run dev
+```
+
+The server will start on port 8080 by default.
+
+## Configuration
+
+You can modify the server settings in the `AvatarServer` constructor:
+
+```javascript
+const server = new AvatarServer(8080); // Change port here
+```
+
+## Integration Points
+
+### Text Processing
+Replace the `generateTextResponse()` method to integrate with your AI service:
+
+```javascript
+generateTextResponse(input) {
+    // Integrate with OpenAI, Claude, or other AI services
+    return aiService.generateResponse(input);
+}
+```
+
+### Audio Processing
+Replace the `processAudio()` method for speech-to-text:
+
+```javascript
+processAudio(base64AudioData) {
+    // Integrate with speech-to-text services
+    return speechToTextService.transcribe(base64AudioData);
+}
+```
+
+### Video Generation
+Replace the `generateFrame()` method for actual video generation:
+
+```javascript
+generateFrame(frameIndex, responseText) {
+    // Integrate with video generation services
+    return videoGenerator.createFrame(frameIndex, responseText);
+}
+```
+
+### Audio Synthesis
+Replace the `generateAudioChunk()` method for text-to-speech:
+
+```javascript
+generateAudioChunk(frameIndex) {
+    // Integrate with TTS services
+    return ttsService.synthesize(text);
+}
+```
+
+## Client Connection
+
+Your Python client should connect to:
+```
+ws://localhost:8080
+```
+
+Or if running on a server:
+```
+ws://your-server-ip:8080
+```
+
+## Message Format Examples
+
+### Text Input (Client → Server):
+```json
+{
+    "type": "text_input",
+    "text": "Hello, who is Newton?"
+}
+```
+
+### Audio Input (Client → Server):
+```json
+{
+    "type": "audio_input",
+    "audio": "base64_encoded_audio_data_here"
+}
+```
+
+### Frame Response (Server → Client):
+```json
+{
+    "type": "frame",
+    "sequence_id": "uuid-here",
+    "frame_index": 0,
+    "frame_data": "base64_encoded_frame_data",
+    "audio_data": "base64_encoded_audio_data",
+    "timestamp": "2025-07-30T12:00:00.000Z"
+}
+```
+
+## Performance Considerations
+
+- **Frame Rate**: Currently set to 25 FPS
+- **Frame Size**: 640x480 resolution
+- **Audio Chunks**: 200ms duration at 16kHz
+- **Connection Timeout**: 1 minute of inactivity
+- **Max Payload**: 50MB per message
+
+## Development Notes
+
+This is a basic implementation with mock data. For production use, you'll need to integrate:
+
+1. **Real AI/NLP services** for text processing
+2. **Speech-to-text services** for audio input
+3. **Text-to-speech services** for audio output
+4. **Video generation services** for avatar animation
+5. **Database integration** if persistence is needed
+6. **Authentication and authorization**
+7. **Rate limiting and security measures**
+
+## Troubleshooting
+
+### Connection Issues
+- Ensure the port 8080 is not blocked by firewall
+- Check if another service is using port 8080
+- Verify WebSocket support in your environment
+
+### Performance Issues
+- Adjust frame rate if streaming is too fast/slow
+- Monitor memory usage with large frame buffers
+- Consider implementing frame compression
+
+### Client Compatibility
+- Ensure your Python client matches the message protocol
+- Check base64 encoding/decoding on both sides
+- Verify JSON message structure

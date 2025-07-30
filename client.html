@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avatar Chat - 5 Second Streams</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            color: rgba(255,255,255,0.9);
+            font-size: 1.1rem;
+        }
+
+        .stream-info {
+            background: rgba(255,255,255,0.95);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .stream-info h3 {
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+
+        .stream-config {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .config-item {
+            text-align: center;
+        }
+
+        .config-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .config-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+            flex: 1;
+        }
+
+        .video-section {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .video-container {
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            position: relative;
+            aspect-ratio: 4/3;
+        }
+
+        #avatarCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+        }
+
+        .video-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: white;
+            font-size: 1.2rem;
+            text-align: center;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #dc3545;
+            transition: background-color 0.3s;
+        }
+
+        .status-dot.connected {
+            background: #28a745;
+        }
+
+        .status-dot.streaming {
+            background: #007bff;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .progress-section {
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #007bff, #28a745);
+            width: 0%;
+            transition: width 0.1s ease;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .controls-section {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .connection-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .input-section {
+            border-top: 2px solid rgba(0,0,0,0.1);
+            padding-top: 20px;
+        }
+
+        .input-section h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 1.3rem;
+        }
+
+        .text-input-area {
+            margin-bottom: 20px;
+        }
+
+        #textInput {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            resize: vertical;
+            min-height: 60px;
+            margin-bottom: 10px;
+            transition: border-color 0.3s;
+        }
+
+        #textInput:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .quick-messages {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+
+        .quick-btn {
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+
+        .quick-btn:hover {
+            background: #007bff;
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        .audio-input-area {
+            text-align: center;
+        }
+
+        #audioFile {
+            display: none;
+        }
+
+        .file-upload-btn {
+            display: inline-block;
+            padding: 12px 20px;
+            background: #28a745;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+
+        .file-upload-btn:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .server-url {
+            margin-bottom: 15px;
+        }
+
+        .server-url label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .server-url input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .logs-section {
+            margin-top: 20px;
+            border-top: 2px solid rgba(0,0,0,0.1);
+            padding-top: 20px;
+        }
+
+        .logs-section h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        #logs {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            height: 250px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+
+        .log-info { color: #007bff; }
+        .log-success { color: #28a745; }
+        .log-warning { color: #ffc107; }
+        .log-error { color: #dc3545; }
+
+        .stream-waiting {
+            color: #28a745;
+            font-weight: bold;
+            text-align: center;
+            padding: 10px;
+            background: rgba(40, 167, 69, 0.1);
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .connection-controls {
+                flex-direction: column;
+            }
+
+            .stream-config {
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Avatar Chat Interface</h1>
+            <p>Each message triggers exactly 5 seconds of avatar video response</p>
+        </div>
+
+        <div class="stream-info">
+            <h3>📊 Stream Configuration</h3>
+            <div class="stream-config">
+                <div class="config-item">
+                    <div class="config-value" id="streamDuration">5s</div>
+                    <div class="config-label">Duration</div>
+                </div>
+                <div class="config-item">
+                    <div class="config-value" id="frameRate">25 FPS</div>
+                    <div class="config-label">Frame Rate</div>
+                </div>
+                <div class="config-item">
+                    <div class="config-value" id="framesPerStream">125</div>
+                    <div class="config-label">Frames/Stream</div>
+                </div>
+                <div class="config-item">
+                    <div class="config-value" id="totalStreams">0</div>
+                    <div class="config-label">Total Streams</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Video Display Section -->
+            <div class="video-section">
+                <div class="status-bar">
+                    <div class="status-indicator">
+                        <div class="status-dot" id="statusDot"></div>
+                        <span id="statusText">Disconnected</span>
+                    </div>
+                    <div id="videoType">No Video</div>
+                </div>
+
+                <div class="progress-section" id="progressSection" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-info">
+                        <span id="progressTime">0.0s / 5.0s</span>
+                        <span id="progressFrames">Frame 0 / 125</span>
+                    </div>
+                </div>
+
+                <div class="video-container">
+                    <canvas id="avatarCanvas" width="640" height="480"></canvas>
+                    <div class="video-placeholder" id="placeholder">
+                        <div>👤 Avatar will appear here</div>
+                        <div style="font-size: 0.9rem; opacity: 0.7;">Send a message to start 5-second stream</div>
+                    </div>
+                </div>
+
+                <div class="stream-waiting" id="streamWaiting" style="display: none;">
+                    ✅ Ready for next message - Send anything to trigger 5s stream!
+                </div>
+            </div>
+
+            <!-- Controls Section -->
+            <div class="controls-section">
+                <div class="server-url">
+                    <label for="serverUrl">Server URL:</label>
+                    <input type="text" id="serverUrl" value="ws://localhost:8080" placeholder="ws://localhost:8080">
+                </div>
+
+                <div class="connection-controls">
+                    <button class="btn btn-primary" id="connectBtn">Connect</button>
+                    <button class="btn btn-danger" id="disconnectBtn" disabled>Disconnect</button>
+                    <button class="btn btn-success" id="testAudioBtn">🔊 Test Audio</button>
+                </div>
+
+                <div class="input-section">
+                    <h3>💬 Send Message (5s Stream Each)</h3>
+                    
+                    <div class="quick-messages">
+                        <button class="quick-btn" data-message="Hello!">👋 Hello</button>
+                        <button class="quick-btn" data-message="How are you?">❓ How are you</button>
+                        <button class="quick-btn" data-message="Tell me about Newton">🧠 Newton</button>
+                        <button class="quick-btn" data-message="Can you help me?">🆘 Help</button>
+                        <button class="quick-btn" data-message="Thank you">🙏 Thank you</button>
+                        <button class="quick-btn" data-message="Goodbye">👋 Goodbye</button>
+                    </div>
+                    
+                    <div class="text-input-area">
+                        <textarea 
+                            id="textInput" 
+                            placeholder="Type your message here... Each message = 5 seconds of avatar video"
+                        ></textarea>
+                        <button class="btn btn-primary" id="sendTextBtn" disabled>Send Text (5s Stream)</button>
+                    </div>
+
+                    <div class="audio-input-area">
+                        <label for="audioFile" class="file-upload-btn">
+                            🎤 Upload Audio File
+                        </label>
+                        <input type="file" id="audioFile" accept="audio/*">
+                        <button class="btn btn-primary" id="sendAudioBtn" disabled>Send Audio (5s Stream)</button>
+                    </div>
+                </div>
+
+                <div class="logs-section">
+                    <h3>📝 Stream Logs</h3>
+                    <div id="logs"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class AvatarClient {
+            constructor() {
+                this.ws = null;
+                this.connected = false;
+                this.canvas = document.getElementById('avatarCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.audioContext = null;
+                
+                // Stream tracking
+                this.currentSequenceId = null;
+                this.isStreaming = false;
+                this.streamStartTime = null;
+                this.totalStreamsCount = 0;
+                this.playedAudioFrames = new Set();
+                this.currentStreamProgress = 0;
+                this.expectedFrames = 125;
+                this.streamDuration = 5.0;
+                
+                this.initializeElements();
+                this.setupEventListeners();
+                this.initializeAudio();
+            }
+
+            initializeElements() {
+                this.connectBtn = document.getElementById('connectBtn');
+                this.disconnectBtn = document.getElementById('disconnectBtn');
+                this.sendTextBtn = document.getElementById('sendTextBtn');
+                this.sendAudioBtn = document.getElementById('sendAudioBtn');
+                this.testAudioBtn = document.getElementById('testAudioBtn');
+                this.textInput = document.getElementById('textInput');
+                this.audioFile = document.getElementById('audioFile');
+                this.serverUrl = document.getElementById('serverUrl');
+                this.statusDot = document.getElementById('statusDot');
+                this.statusText = document.getElementById('statusText');
+                this.videoType = document.getElementById('videoType');
+                this.logs = document.getElementById('logs');
+                this.placeholder = document.getElementById('placeholder');
+                this.streamWaiting = document.getElementById('streamWaiting');
+                this.progressSection = document.getElementById('progressSection');
+                this.progressFill = document.getElementById('progressFill');
+                this.progressTime = document.getElementById('progressTime');
+                this.progressFrames = document.getElementById('progressFrames');
+                this.totalStreams = document.getElementById('totalStreams');
+            }
+
+            setupEventListeners() {
+                this.connectBtn.addEventListener('click', () => this.connect());
+                this.disconnectBtn.addEventListener('click', () => this.disconnect());
+                this.sendTextBtn.addEventListener('click', () => this.sendText());
+                this.sendAudioBtn.addEventListener('click', () => this.sendAudio());
+                this.testAudioBtn.addEventListener('click', () => this.testAudio());
+                
+                // Quick message buttons
+                document.querySelectorAll('.quick-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const message = btn.getAttribute('data-message');
+                        this.textInput.value = message;
+                        this.sendText();
+                    });
+                });
+                
+                this.textInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendText();
+                    }
+                });
+
+                this.audioFile.addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) {
+                        this.log(`📁 Selected audio file: ${e.target.files[0].name}`, 'info');
+                    }
+                });
+            }
+
+            async initializeAudio() {
+                this.log('🔊 Initializing audio system...', 'info');
+                
+                try {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    this.log(`✅ Audio context created. State: ${this.audioContext.state}`, 'success');
+                    
+                    if (this.audioContext.state === 'suspended') {
+                        this.log('⚠️ Audio context suspended due to autoplay policy. Click anywhere to enable.', 'warning');
+                        
+                        const resumeAudio = async () => {
+                            try {
+                                await this.audioContext.resume();
+                                this.log(`✅ Audio context resumed. State: ${this.audioContext.state}`, 'success');
+                                document.removeEventListener('click', resumeAudio);
+                                document.removeEventListener('touchstart', resumeAudio);
+                            } catch (error) {
+                                this.log(`❌ Failed to resume audio: ${error.message}`, 'error');
+                            }
+                        };
+                        
+                        document.addEventListener('click', resumeAudio);
+                        document.addEventListener('touchstart', resumeAudio);
+                    }
+                    
+                } catch (error) {
+                    this.log(`❌ Audio initialization failed: ${error.message}`, 'error');
+                }
+            }
+
+            connect() {
+                const url = this.serverUrl.value.trim();
+                if (!url) {
+                    this.log('⚠️ Please enter a server URL', 'warning');
+                    return;
+                }
+
+                this.log(`🔌 Connecting to ${url}...`, 'info');
+                
+                try {
+                    this.ws = new WebSocket(url);
+                    
+                    this.ws.onopen = () => {
+                        this.connected = true;
+                        this.updateConnectionStatus('connected', 'Connected');
+                        this.log('✅ Connected to avatar server', 'success');
+                        this.enableControls(true);
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        this.handleMessage(event.data);
+                    };
+
+                    this.ws.onclose = () => {
+                        this.connected = false;
+                        this.updateConnectionStatus('disconnected', 'Disconnected');
+                        this.log('⚠️ Disconnected from server', 'warning');
+                        this.enableControls(false);
+                        this.resetStream();
+                    };
+
+                    this.ws.onerror = (error) => {
+                        this.log('❌ WebSocket error occurred', 'error');
+                        this.updateConnectionStatus('disconnected', 'Error');
+                    };
+
+                } catch (error) {
+                    this.log(`❌ Connection failed: ${error.message}`, 'error');
+                }
+            }
+
+            disconnect() {
+                if (this.ws) {
+                    this.ws.close();
+                    this.ws = null;
+                }
+            }
+
+            enableControls(enabled) {
+                this.connectBtn.disabled = enabled;
+                this.disconnectBtn.disabled = !enabled;
+                this.sendTextBtn.disabled = !enabled || this.isStreaming;
+                this.sendAudioBtn.disabled = !enabled || this.isStreaming;
+                this.textInput.disabled = !enabled || this.isStreaming;
+                this.audioFile.disabled = !enabled || this.isStreaming;
+                
+                // Update quick buttons
+                document.querySelectorAll('.quick-btn').forEach(btn => {
+                    btn.style.pointerEvents = (enabled && !this.isStreaming) ? 'auto' : 'none';
+                    btn.style.opacity = (enabled && !this.isStreaming) ? '1' : '0.5';
+                });
+            }
+
+            updateConnectionStatus(status, text) {
+                this.statusDot.className = `status-dot ${status}`;
+                this.statusText.textContent = text;
+            }
+
+            sendText() {
+                const text = this.textInput.value.trim();
+                if (!text || !this.connected || this.isStreaming) return;
+
+                const message = {
+                    type: 'text_input',
+                    text: text
+                };
+
+                this.ws.send(JSON.stringify(message));
+                this.log(`📤 Sent text: "${text}" (expecting 5s stream)`, 'info');
+                this.textInput.value = '';
+                this.hideWaitingMessage();
+            }
+
+            async sendAudio() {
+                const file = this.audioFile.files[0];
+                if (!file || !this.connected || this.isStreaming) return;
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const base64 = this.arrayBufferToBase64(arrayBuffer);
+                    
+                    const message = {
+                        type: 'audio_input',
+                        audio: base64
+                    };
+
+                    this.ws.send(JSON.stringify(message));
+                    this.log(`📤 Sent audio file: ${file.name} (expecting 5s stream)`, 'info');
+                    this.audioFile.value = '';
+                    this.hideWaitingMessage();
+                } catch (error) {
+                    this.log(`❌ Failed to send audio: ${error.message}`, 'error');
+                }
+            }
+
+            arrayBufferToBase64(buffer) {
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return btoa(binary);
+            }
+
+            handleMessage(data) {
+                try {
+                    const message = JSON.parse(data);
+                    
+                    switch (message.type) {
+                        case 'connection_established':
+                            this.handleConnectionEstablished(message);
+                            break;
+                            
+                        case 'stream_start':
+                            this.handleStreamStart(message);
+                            break;
+                            
+                        case 'frame':
+                            this.handleFrame(message);
+                            break;
+                            
+                        case 'stream_end':
+                            this.handleStreamEnd(message);
+                            break;
+                            
+                        case 'error':
+                            this.log(`❌ Server error: ${message.message}`, 'error');
+                            break;
+                            
+                        default:
+                            this.log(`⚠️ Unknown message type: ${message.type}`, 'warning');
+                    }
+                } catch (error) {
+                    this.log(`❌ Failed to parse message: ${error.message}`, 'error');
+                }
+            }
+
+            handleConnectionEstablished(message) {
+                this.log(`✅ Session established: ${message.session_id}`, 'success');
+                
+                if (message.stream_config) {
+                    const config = message.stream_config;
+                    this.streamDuration = config.duration;
+                    this.expectedFrames = config.frames_per_stream;
+                    
+                    document.getElementById('streamDuration').textContent = `${config.duration}s`;
+                    document.getElementById('frameRate').textContent = `${config.frame_rate} FPS`;
+                    document.getElementById('framesPerStream').textContent = config.frames_per_stream;
+                    
+                    this.log(`⚙️ Stream config: ${config.duration}s, ${config.frame_rate} FPS, ${config.frames_per_stream} frames`, 'info');
+                }
+            }
+
+            handleStreamStart(message) {
+                this.updateConnectionStatus('streaming', 'Streaming');
+                this.videoType.textContent = `${message.video_type} Video`;
+                this.log(`🎬 Stream started: "${message.response_text}" (${message.video_type})`, 'success');
+                
+                // Reset for new stream
+                this.currentSequenceId = message.sequence_id;
+                this.isStreaming = true;
+                this.streamStartTime = Date.now();
+                this.currentStreamProgress = 0;
+                this.playedAudioFrames.clear();
+                this.placeholder.style.display = 'none';
+                this.progressSection.style.display = 'block';
+                this.hideWaitingMessage();
+                
+                // Update stream duration if provided
+                if (message.estimated_duration) {
+                    this.streamDuration = message.estimated_duration;
+                }
+                
+                // Disable controls during streaming
+                this.enableControls(this.connected);
+            }
+
+            handleStreamEnd(message) {
+                this.updateConnectionStatus('connected', 'Connected');
+                this.log(`✅ Stream completed: ${message.total_frames} frames in ${message.actual_duration}s`, 'success');
+                
+                this.isStreaming = false;
+                this.currentSequenceId = null;
+                this.progressSection.style.display = 'none';
+                this.totalStreamsCount++;
+                this.totalStreams.textContent = this.totalStreamsCount;
+                
+                // Re-enable controls
+                this.enableControls(this.connected);
+                this.showWaitingMessage();
+            }
+
+            handleFrame(message) {
+                if (message.sequence_id !== this.currentSequenceId || !this.isStreaming) {
+                    return;
+                }
+
+                // Update progress
+                this.currentStreamProgress = message.frame_index + 1;
+                this.updateProgress();
+                
+                // Display video frame
+                if (message.frame_data) {
+                    this.displayFrame(message.frame_data);
+                }
+                
+                // Play audio (avoid duplicates)
+                if (message.audio_data && !this.playedAudioFrames.has(message.frame_index)) {
+                    this.playedAudioFrames.add(message.frame_index);
+                    this.playAudioChunk(message.audio_data, message.frame_index);
+                }
+
+                // Log progress every 25 frames (1 second)
+                if (message.frame_index % 25 === 0) {
+                    const elapsed = (message.frame_index + 1) / 25;
+                    this.log(`📊 Progress: ${elapsed.toFixed(1)}s / ${this.streamDuration}s`, 'info');
+                }
+            }
+
+            updateProgress() {
+                const progressPercent = (this.currentStreamProgress / this.expectedFrames) * 100;
+                const elapsedTime = this.currentStreamProgress / 25; // Assuming 25 FPS
+                
+                this.progressFill.style.width = `${progressPercent}%`;
+                this.progressTime.textContent = `${elapsedTime.toFixed(1)}s / ${this.streamDuration}s`;
+                this.progressFrames.textContent = `Frame ${this.currentStreamProgress} / ${this.expectedFrames}`;
+            }
+
+            displayFrame(base64Data) {
+                const img = new Image();
+                img.onload = () => {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+                };
+                img.src = `data:image/jpeg;base64,${base64Data}`;
+            }
+
+            async playAudioChunk(base64Data, frameIndex) {
+                if (!this.audioContext || !base64Data) return;
+                
+                try {
+                    await this.ensureAudioContext();
+                    
+                    // Decode base64 to array buffer
+                    const binaryString = atob(base64Data);
+                    const arrayBuffer = new ArrayBuffer(binaryString.length);
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    
+                    for (let i = 0; i < binaryString.length; i++) {
+                        uint8Array[i] = binaryString.charCodeAt(i);
+                    }
+                    
+                    // Create audio buffer from PCM data
+                    const sampleRate = 16000;
+                    const numSamples = arrayBuffer.byteLength / 2;
+                    
+                    if (numSamples === 0) return;
+                    
+                    const audioBuffer = this.audioContext.createBuffer(1, numSamples, sampleRate);
+                    const channelData = audioBuffer.getChannelData(0);
+                    const view = new DataView(arrayBuffer);
+                    
+                    for (let i = 0; i < numSamples; i++) {
+                        const sample = view.getInt16(i * 2, true);
+                        channelData[i] = sample / 32768.0;
+                    }
+                    
+                    // Create and play audio source
+                    const source = this.audioContext.createBufferSource();
+                    const gainNode = this.audioContext.createGain();
+                    
+                    source.buffer = audioBuffer;
+                    gainNode.gain.value = 0.7;
+                    
+                    source.connect(gainNode);
+                    gainNode.connect(this.audioContext.destination);
+                    
+                    source.start(this.audioContext.currentTime + 0.01);
+                    
+                } catch (error) {
+                    console.error('Audio playback error:', error);
+                }
+            }
+
+            async ensureAudioContext() {
+                if (!this.audioContext) {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                if (this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
+                }
+                
+                return this.audioContext.state === 'running';
+            }
+
+            async testAudio() {
+                this.log('🔊 Testing audio system...', 'info');
+                
+                try {
+                    await this.ensureAudioContext();
+                    
+                    if (!this.audioContext || this.audioContext.state !== 'running') {
+                        this.log('❌ Audio context not ready', 'error');
+                        return;
+                    }
+                    
+                    // Generate test tone
+                    const sampleRate = 16000;
+                    const duration = 1.0;
+                    const samples = Math.floor(sampleRate * duration);
+                    const buffer = new ArrayBuffer(samples * 2);
+                    const view = new DataView(buffer);
+                    
+                    for (let i = 0; i < samples; i++) {
+                        const t = i / sampleRate;
+                        const sample = Math.sin(2 * Math.PI * 440 * t) * 0.3;
+                        const intSample = Math.round(sample * 32767);
+                        view.setInt16(i * 2, intSample, true);
+                    }
+                    
+                    const uint8Array = new Uint8Array(buffer);
+                    let binary = '';
+                    for (let i = 0; i < uint8Array.length; i++) {
+                        binary += String.fromCharCode(uint8Array[i]);
+                    }
+                    const base64 = btoa(binary);
+                    
+                    await this.playAudioChunk(base64, 'test');
+                    this.log('✅ Audio test completed successfully', 'success');
+                    
+                } catch (error) {
+                    this.log(`❌ Audio test failed: ${error.message}`, 'error');
+                }
+            }
+
+            showWaitingMessage() {
+                this.streamWaiting.style.display = 'block';
+            }
+
+            hideWaitingMessage() {
+                this.streamWaiting.style.display = 'none';
+            }
+
+            resetStream() {
+                this.isStreaming = false;
+                this.currentSequenceId = null;
+                this.currentStreamProgress = 0;
+                this.playedAudioFrames.clear();
+                this.progressSection.style.display = 'none';
+                this.placeholder.style.display = 'flex';
+                this.hideWaitingMessage();
+                this.videoType.textContent = 'No Video';
+            }
+
+            log(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = document.createElement('div');
+                logEntry.className = `log-entry log-${type}`;
+                logEntry.textContent = `[${timestamp}] ${message}`;
+                
+                this.logs.appendChild(logEntry);
+                this.logs.scrollTop = this.logs.scrollHeight;
+                
+                // Keep only last 100 log entries
+                while (this.logs.children.length > 100) {
+                    this.logs.removeChild(this.logs.firstChild);
+                }
+            }
+        }
+
+        // Initialize the client when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new AvatarClient();
+        });
+    </script>
+</body>
+</html>
