@@ -1,4 +1,5 @@
-const WebSocket = require('ws');
+const { Server } = require('socket.io');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -9,7 +10,8 @@ class AvatarServer {
     constructor(port = 8080) {
         this.port = port;
         this.clients = new Map();
-        this.wss = null;
+        this.httpServer = null;
+        this.io = null;
         
         // Video files directory
         this.videosDir = path.join(__dirname, 'videos');
@@ -37,39 +39,74 @@ class AvatarServer {
     }
 
     start() {
-        this.wss = new WebSocket.Server({ 
-            port: this.port,
-            perMessageDeflate: false,
-            maxPayload: 50 * 1024 * 1024 // 50MB max payload
+        // Create HTTP server
+        this.httpServer = http.createServer();
+
+        // Create Socket.IO server with CORS configuration
+        this.io = new Server(this.httpServer, {
+            cors: {
+                origin: "*", // Allow all origins - adjust as needed for production
+                methods: ["GET", "POST"],
+                allowedHeaders: ["*"],
+                credentials: true
+            },
+            // Socket.IO specific options
+            allowEIO3: true, // Allow Engine.IO v3 clients
+            transports: ['websocket', 'polling'],
+            pingTimeout: 60000,
+            pingInterval: 25000,
+            maxHttpBufferSize: 50 * 1024 * 1024, // 50MB max payload
+            // Additional CORS headers for preflight requests
+            handlePreflightRequest: (req, res) => {
+                res.writeHead(200, {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                    "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control",
+                    "Access-Control-Allow-Credentials": true
+                });
+                res.end();
+            }
         });
 
-        console.log(`Avatar WebSocket server started on port ${this.port}`);
-
-        this.wss.on('connection', (ws, req) => {
-            this.handleConnection(ws, req);
+        // Start HTTP server
+        this.httpServer.listen(this.port, () => {
+            console.log(`Avatar Socket.IO server started on port ${this.port}`);
+            console.log(`Server URL: http://localhost:${this.port}`);
+            console.log(`CORS enabled for all origins`);
         });
 
-        this.wss.on('error', (error) => {
-            console.error('WebSocket server error:', error);
+        // Handle Socket.IO connections
+        this.io.on('connection', (socket) => {
+            this.handleConnection(socket);
+        });
+
+        // Handle server errors
+        this.httpServer.on('error', (error) => {
+            console.error('HTTP server error:', error);
+        });
+
+        this.io.on('error', (error) => {
+            console.error('Socket.IO server error:', error);
         });
     }
 
-    handleConnection(ws, req) {
+    handleConnection(socket) {
         const sessionId = uuidv4();
         const clientInfo = {
             sessionId,
-            ws,
+            socket,
             connected: true,
-            lastActivity: Date.now()
+            lastActivity: Date.now(),
+            remoteAddress: socket.handshake.address
         };
 
         this.clients.set(sessionId, clientInfo);
         
-        console.log(`Client connected: ${sessionId} from ${req.socket.remoteAddress}`);
+        console.log(`Client connected: ${sessionId} from ${socket.handshake.address}`);
+        console.log(`Total clients connected: ${this.clients.size}`);
 
         // Send connection established message
-        this.sendMessage(ws, {
-            type: 'connection_established',
+        socket.emit('connection_established', {
             session_id: sessionId,
             timestamp: new Date().toISOString(),
             stream_config: {
@@ -79,93 +116,89 @@ class AvatarServer {
             }
         });
 
-        // Set up message handler
-        ws.on('message', (data) => {
-            try {
-                const message = JSON.parse(data.toString());
-                this.handleClientMessage(sessionId, message);
-            } catch (error) {
-                console.error('Error parsing client message:', error);
-                this.sendError(ws, 'Invalid JSON message format');
+        // Set up event handlers
+        socket.on('text_input', async (data) => {
+            await this.handleTextInput(clientInfo, data);
+        });
+
+        socket.on('audio_input', async (data) => {
+            await this.handleAudioInput(clientInfo, data);
+        });
+
+        // Handle client ping for connection health
+        socket.on('ping', () => {
+            if (this.clients.has(sessionId)) {
+                this.clients.get(sessionId).lastActivity = Date.now();
+                socket.emit('pong');
             }
         });
 
         // Handle disconnection
-        ws.on('close', () => {
-            console.log(`Client disconnected: ${sessionId}`);
+        socket.on('disconnect', (reason) => {
+            console.log(`Client disconnected: ${sessionId}, reason: ${reason}`);
+            console.log(`Total clients connected: ${this.clients.size - 1}`);
             this.clients.delete(sessionId);
         });
 
-        // Handle errors
-        ws.on('error', (error) => {
-            console.error(`WebSocket error for client ${sessionId}:`, error);
+        // Handle connection errors
+        socket.on('error', (error) => {
+            console.error(`Socket error for client ${sessionId}:`, error);
             this.clients.delete(sessionId);
         });
 
-        // Set up ping/pong for connection health
-        ws.on('pong', () => {
+        // Update last activity on any message
+        socket.onAny(() => {
             if (this.clients.has(sessionId)) {
                 this.clients.get(sessionId).lastActivity = Date.now();
             }
         });
     }
 
-    async handleClientMessage(sessionId, message) {
-        const client = this.clients.get(sessionId);
-        if (!client || !client.connected) {
-            console.log(`Message from disconnected client: ${sessionId}`);
-            return;
-        }
-
-        console.log(`Received message from ${sessionId}:`, message.type);
-
+    async handleTextInput(client, data) {
+        const text = data.text || data;
+        console.log(`Processing text input from ${client.sessionId}: "${text}"`);
+        
         try {
-            switch (message.type) {
-                case 'text_input':
-                    await this.handleTextInput(client, message);
-                    break;
-                case 'audio_input':
-                    await this.handleAudioInput(client, message);
-                    break;
-                default:
-                    console.log(`Unknown message type: ${message.type}`);
-                    this.sendError(client.ws, `Unknown message type: ${message.type}`);
-            }
+            // Generate response based on text
+            const response = this.generateTextResponse(text);
+            console.log(`Generated response: "${response}"`);
+            
+            // Start 5-second video stream
+            await this.streamFixedDurationResponse(client, response, text);
         } catch (error) {
-            console.error(`Error handling message from ${sessionId}:`, error);
-            this.sendError(client.ws, 'Internal server error');
+            console.error(`Error handling text input from ${client.sessionId}:`, error);
+            this.sendError(client.socket, 'Error processing text input');
         }
     }
 
-    async handleTextInput(client, message) {
-        const text = message.text;
-        console.log(`Processing text input: "${text}"`);
+    async handleAudioInput(client, data) {
+        const audioData = data.audio || data;
+        console.log(`Processing audio input from ${client.sessionId}, size: ${audioData.length} characters (base64)`);
         
-        // Generate response based on text
-        const response = this.generateTextResponse(text);
-        console.log(`Generated response: "${response}"`);
-        
-        // Start 5-second video stream
-        await this.streamFixedDurationResponse(client, response, text);
-    }
-
-    async handleAudioInput(client, message) {
-        const audioData = message.audio;
-        console.log(`Processing audio input, size: ${audioData.length} characters (base64)`);
-        
-        // Process audio (you can integrate with speech-to-text here)
-        const transcription = this.processAudio(audioData);
-        console.log(`Audio transcription: "${transcription}"`);
-        
-        // Generate response
-        const response = this.generateTextResponse(transcription);
-        
-        // Start 5-second video stream
-        await this.streamFixedDurationResponse(client, response, transcription);
+        try {
+            // Process audio (you can integrate with speech-to-text here)
+            const transcription = this.processAudio(audioData);
+            console.log(`Audio transcription: "${transcription}"`);
+            
+            // Generate response
+            const response = this.generateTextResponse(transcription);
+            
+            // Start 5-second video stream
+            await this.streamFixedDurationResponse(client, response, transcription);
+        } catch (error) {
+            console.error(`Error handling audio input from ${client.sessionId}:`, error);
+            this.sendError(client.socket, 'Error processing audio input');
+        }
     }
 
     async streamFixedDurationResponse(client, responseText, originalInput) {
         const sequenceId = uuidv4();
+        
+        // Check if client is still connected
+        if (!client.connected || !client.socket.connected) {
+            console.log('Client disconnected before streaming');
+            return;
+        }
         
         // Determine which video to use based on response content
         const videoType = this.determineVideoType(responseText);
@@ -191,7 +224,7 @@ class AvatarServer {
             }
             
             if (!fallbackMedia) {
-                this.sendError(client.ws, 'No media data available on server. Please add video files to the videos/ directory.');
+                this.sendError(client.socket, 'No media data available on server. Please add video files to the videos/ directory.');
                 return;
             }
             
@@ -214,8 +247,7 @@ class AvatarServer {
 
         try {
             // Send stream start
-            this.sendMessage(client.ws, {
-                type: 'stream_start',
+            client.socket.emit('stream_start', {
                 sequence_id: sequenceId,
                 response_text: responseText,
                 original_input: originalInput,
@@ -229,7 +261,7 @@ class AvatarServer {
             // Stream exactly 125 frames (5 seconds at 25 FPS)
             for (let i = 0; i < this.FRAMES_PER_STREAM; i++) {
                 // Check if client is still connected
-                if (!client.connected || client.ws.readyState !== WebSocket.OPEN) {
+                if (!client.connected || !client.socket.connected) {
                     console.log('Client disconnected during streaming');
                     break;
                 }
@@ -243,8 +275,7 @@ class AvatarServer {
                 const audioData = mediaSet.audioChunks[audioIndex] ? mediaSet.audioChunks[audioIndex].data : null;
 
                 // Send frame with audio
-                this.sendMessage(client.ws, {
-                    type: 'frame',
+                client.socket.emit('frame', {
                     sequence_id: sequenceId,
                     frame_index: i, // Use sequential counter (0-124)
                     source_frame_index: frameIndex, // Which frame from source video
@@ -264,8 +295,7 @@ class AvatarServer {
             }
 
             // Send stream end
-            this.sendMessage(client.ws, {
-                type: 'stream_end',
+            client.socket.emit('stream_end', {
                 sequence_id: sequenceId,
                 total_frames: this.FRAMES_PER_STREAM,
                 actual_duration: this.STREAM_DURATION,
@@ -278,7 +308,7 @@ class AvatarServer {
 
         } catch (error) {
             console.error('❌ Error during fixed duration streaming:', error);
-            this.sendError(client.ws, `Streaming error: ${error.message}`);
+            this.sendError(client.socket, `Streaming error: ${error.message}`);
         }
     }
 
@@ -720,19 +750,8 @@ class AvatarServer {
         };
     }
 
-    sendMessage(ws, message) {
-        if (ws.readyState === WebSocket.OPEN) {
-            try {
-                ws.send(JSON.stringify(message));
-            } catch (error) {
-                console.error('❌ Error sending message:', error);
-            }
-        }
-    }
-
-    sendError(ws, errorMessage) {
-        this.sendMessage(ws, {
-            type: 'error',
+    sendError(socket, errorMessage) {
+        socket.emit('error', {
             message: errorMessage,
             timestamp: new Date().toISOString()
         });
@@ -749,17 +768,51 @@ class AvatarServer {
             for (const [sessionId, client] of this.clients.entries()) {
                 if (now - client.lastActivity > 60000) { // 1 minute timeout
                     console.log(`🧹 Cleaning up inactive client: ${sessionId}`);
-                    client.ws.terminate();
+                    client.socket.disconnect(true);
                     this.clients.delete(sessionId);
                 }
             }
         }, 30000); // Check every 30 seconds
     }
 
+    // Get server statistics
+    getStats() {
+        return {
+            connectedClients: this.clients.size,
+            serverUptime: process.uptime(),
+            memoryUsage: process.memoryUsage(),
+            availableVideoTypes: Object.keys(this.mediaData).filter(type => 
+                this.mediaData[type] && this.mediaData[type].frames.length > 0
+            )
+        };
+    }
+
+    // Broadcast message to all connected clients
+    broadcast(event, data) {
+        this.io.emit(event, data);
+    }
+
+    // Send message to specific client
+    sendToClient(sessionId, event, data) {
+        const client = this.clients.get(sessionId);
+        if (client && client.socket.connected) {
+            client.socket.emit(event, data);
+            return true;
+        }
+        return false;
+    }
+
     stop() {
-        if (this.wss) {
-            this.wss.close(() => {
-                console.log('🛑 WebSocket server stopped');
+        if (this.io) {
+            console.log('🛑 Closing Socket.IO connections...');
+            this.io.close(() => {
+                console.log('🛑 Socket.IO server stopped');
+            });
+        }
+        
+        if (this.httpServer) {
+            this.httpServer.close(() => {
+                console.log('🛑 HTTP server stopped');
             });
         }
     }
@@ -770,17 +823,103 @@ const server = new AvatarServer(8080);
 server.start();
 server.startHealthCheck();
 
+// Add endpoint for health check and stats (optional)
+server.httpServer.on('request', (req, res) => {
+    // Handle CORS for HTTP requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+    }
+
+    if (req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            ...server.getStats()
+        }));
+    } else if (req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Avatar Socket.IO Server</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; }
+                    .status { color: green; font-weight: bold; }
+                    .info { background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                    code { background: #eee; padding: 2px 5px; border-radius: 3px; }
+                </style>
+            </head>
+            <body>
+                <h1>Avatar Socket.IO Server</h1>
+                <p class="status">✅ Server is running</p>
+                <div class="info">
+                    <h3>Connection Info:</h3>
+                    <p><strong>Server URL:</strong> <code>http://localhost:${server.port}</code></p>
+                    <p><strong>Connected Clients:</strong> ${server.clients.size}</p>
+                    <p><strong>Available Video Types:</strong> ${server.getStats().availableVideoTypes.join(', ')}</p>
+                </div>
+                <div class="info">
+                    <h3>Client Events:</h3>
+                    <ul>
+                        <li><code>text_input</code> - Send text input: <code>{text: "your message"}</code></li>
+                        <li><code>audio_input</code> - Send audio input: <code>{audio: "base64_audio_data"}</code></li>
+                        <li><code>ping</code> - Health check ping</li>
+                    </ul>
+                </div>
+                <div class="info">
+                    <h3>Server Events:</h3>
+                    <ul>
+                        <li><code>connection_established</code> - Connection successful</li>
+                        <li><code>stream_start</code> - Video stream starting</li>
+                        <li><code>frame</code> - Video frame data</li>
+                        <li><code>stream_end</code> - Video stream complete</li>
+                        <li><code>error</code> - Error message</li>
+                        <li><code>pong</code> - Response to ping</li>
+                    </ul>
+                </div>
+            </body>
+            </html>
+        `);
+    } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+    }
+});
+
 // Graceful shutdown
 process.on('SIGINT', () => {
     console.log('🛑 Shutting down server...');
     server.stop();
-    process.exit(0);
+    setTimeout(() => {
+        process.exit(0);
+    }, 2000);
 });
 
 process.on('SIGTERM', () => {
     console.log('🛑 Shutting down server...');
     server.stop();
-    process.exit(0);
+    setTimeout(() => {
+        process.exit(0);
+    }, 2000);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    server.stop();
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 module.exports = AvatarServer;
