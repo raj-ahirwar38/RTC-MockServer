@@ -730,7 +730,7 @@ class AvatarServer {
 
     generateSimpleAudioChunk(frameIndex) {
         const sampleRate = 16000;
-        const duration = 0.2;
+        const duration = 0.5;
         const samples = Math.floor(sampleRate * duration);
         const buffer = Buffer.alloc(samples * 2);
         
